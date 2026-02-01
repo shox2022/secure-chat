@@ -1,126 +1,839 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Chat Room - ECDH + AES-GCM</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+            height: calc(100vh - 40px);
+        }
+
+        /* User Panel */
+        .user-panel {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+            backdrop-filter: blur(10px);
+        }
+
+        .user-panel h2 {
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .user-info {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            border-radius: 15px;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .user-info h3 {
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+
+        .user-info .username {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            font-size: 14px;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4ade80;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+
+        .users-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .users-list h3 {
+            color: #666;
+            margin-bottom: 15px;
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        .user-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin-bottom: 8px;
+            transition: transform 0.2s;
+        }
+
+        .user-item:hover {
+            transform: translateX(5px);
+            background: #edf2f7;
+        }
+
+        .user-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            margin-right: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 16px;
+        }
+
+        .user-name {
+            font-weight: 500;
+            color: #333;
+        }
+
+        .user-status {
+            font-size: 12px;
+            color: #666;
+            margin-left: auto;
+        }
+
+        /* Chat Panel */
+        .chat-panel {
+            display: flex;
+            flex-direction: column;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+            backdrop-filter: blur(10px);
+        }
+
+        .chat-header {
+            padding: 25px 30px;
+            border-bottom: 2px solid #f1f5f9;
+        }
+
+        .chat-header h2 {
+            color: #333;
+            font-size: 28px;
+            font-weight: 600;
+        }
+
+        .chat-subtitle {
+            color: #666;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+        }
+
+        .message {
+            display: flex;
+            margin-bottom: 20px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .message.own-message {
+            justify-content: flex-end;
+        }
+
+        .message-content {
+            max-width: 70%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .message-bubble {
+            padding: 15px 20px;
+            border-radius: 20px;
+            position: relative;
+            word-wrap: break-word;
+        }
+
+        .other-message .message-bubble {
+            background: #f1f5f9;
+            border-bottom-left-radius: 5px;
+            color: #333;
+        }
+
+        .own-message .message-bubble {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-bottom-right-radius: 5px;
+            color: white;
+        }
+
+        .message-sender {
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+        }
+
+        .other-message .message-sender {
+            color: #666;
+        }
+
+        .own-message .message-sender {
+            color: #764ba2;
+            justify-content: flex-end;
+        }
+
+        .message-time {
+            font-size: 11px;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+
+        .other-message .message-time {
+            text-align: left;
+        }
+
+        .own-message .message-time {
+            text-align: right;
+        }
+
+        .system-message {
+            text-align: center;
+            margin: 20px 0;
+            color: #666;
+            font-size: 13px;
+        }
+
+        .typing-indicator {
+            padding: 0 30px 20px;
+            color: #666;
+            font-size: 13px;
+            font-style: italic;
+            height: 20px;
+        }
+
+        /* Message Input */
+        .message-input-container {
+            padding: 25px 30px;
+            border-top: 2px solid #f1f5f9;
+            background: white;
+            border-bottom-left-radius: 20px;
+            border-bottom-right-radius: 20px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        #messageInput {
+            flex: 1;
+            padding: 18px 25px;
+            border: 2px solid #e2e8f0;
+            border-radius: 15px;
+            font-size: 16px;
+            transition: all 0.3s;
+            outline: none;
+        }
+
+        #messageInput:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        #sendButton {
+            padding: 18px 35px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 15px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #sendButton:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        #sendButton:active {
+            transform: translateY(0);
+        }
+
+        /* Connection Status */
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+
+        .connection-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #e74c3c;
+        }
+
+        .connection-dot.connected {
+            background: #2ecc71;
+            animation: pulse 2s infinite;
+        }
+
+        /* Animations */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 4px;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+            
+            .user-panel {
+                height: 300px;
+            }
+            
+            .connection-status {
+                top: 10px;
+                right: 10px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
 <body>
-  <h2>Secure Chat (ECDH + AES-GCM)</h2>
-  <input id="msg" placeholder="Type message">
-  <button onclick="send()">Send</button>
-  <pre id="log"></pre>
+    <!-- Connection Status Indicator -->
+    <div class="connection-status">
+        <div class="connection-dot"></div>
+        <span id="statusText">Connecting...</span>
+    </div>
 
-  <script>
-    function base64Encode(buf) {
-      return btoa(String.fromCharCode(...new Uint8Array(buf)));
-    }
+    <div class="container">
+        <!-- User Panel -->
+        <div class="user-panel">
+            <h2>Chat Room</h2>
+            
+            <div class="user-info">
+                <h3>You are:</h3>
+                <div class="username" id="myUsername">Setting up...</div>
+                <div class="status">
+                    <div class="status-indicator" id="myStatus"></div>
+                    <span id="connectionStatus">Establishing secure connection...</span>
+                </div>
+            </div>
 
-    function base64Decode(b64) {
-      return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-    }
+            <div class="users-list">
+                <h3>Online Users (<span id="userCount">0</span>)</h3>
+                <div id="usersContainer">
+                    <!-- Users will be added here dynamically -->
+                </div>
+            </div>
+        </div>
 
-    const ws = new WebSocket("ws://localhost:8080");
-    const log = document.getElementById("log");
+        <!-- Chat Panel -->
+        <div class="chat-panel">
+            <div class="chat-header">
+                <h2>Secure Chat</h2>
+                <div class="chat-subtitle">End-to-end encrypted with ECDH & AES-256-GCM</div>
+            </div>
 
-    let ecdhKeyPair;
-    let aesKey;
+            <div class="messages-container" id="messagesContainer">
+                <!-- Messages will be added here -->
+                <div class="system-message" id="welcomeMessage">
+                    Welcome to the secure chat room! Messages are encrypted using Elliptic Curve Diffie-Hellman and AES-256-GCM.
+                </div>
+            </div>
 
-    // Generate client ECDH key pair
-    (async () => {
-      ecdhKeyPair = await crypto.subtle.generateKey(
-        { name: "ECDH", namedCurve: "P-256" },
-        true,
-        ["deriveBits"]
-      );
-      console.log("Client ECDH keys generated");
-    })();
+            <div class="typing-indicator" id="typingIndicator"></div>
 
-    // Handle messages from server
-    ws.onmessage = async (event) => {
-      const data = JSON.parse(event.data);
+            <div class="message-input-container">
+                <div class="input-group">
+                    <input type="text" 
+                           id="messageInput" 
+                           placeholder="Type your secure message here..."
+                           autocomplete="off">
+                    <button id="sendButton" onclick="sendMessage()">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+                        </svg>
+                        Send
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
-      if (data.type === "server-public-key") {
-        const serverPub = await crypto.subtle.importKey(
-          "raw",
-          base64Decode(data.key),
-          { name: "ECDH", namedCurve: "P-256" },
-          false,
-          []
-        );
+    <!-- Username Modal -->
+    <div id="usernameModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center;">
+        <div style="background: white; padding: 40px; border-radius: 20px; max-width: 400px; width: 90%;">
+            <h2 style="margin-bottom: 20px; color: #333;">Welcome to Secure Chat</h2>
+            <p style="margin-bottom: 25px; color: #666;">Please choose a username to start chatting:</p>
+            <input type="text" 
+                   id="usernameInput" 
+                   placeholder="Enter your username"
+                   style="width: 100%; padding: 15px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 16px; margin-bottom: 20px;"
+                   autocomplete="off">
+            <button onclick="setUsername()"
+                    style="width: 100%; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer;">
+                Join Chat
+            </button>
+        </div>
+    </div>
 
-        // Send client public key
-        const clientPubRaw = await crypto.subtle.exportKey(
-          "raw",
-          ecdhKeyPair.publicKey
-        );
+    <script>
+        // Utility functions
+        function base64Encode(buf) {
+            return btoa(String.fromCharCode(...new Uint8Array(buf)));
+        }
 
-        ws.send(JSON.stringify({
-          type: "client-public-key",
-          key: base64Encode(clientPubRaw)
-        }));
+        function base64Decode(b64) {
+            return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+        }
 
-        // Derive shared secret (matching server's method)
-        const sharedSecret = await crypto.subtle.deriveBits(
-          { name: "ECDH", public: serverPub },
-          ecdhKeyPair.privateKey,
-          256
-        );
+        // WebSocket and encryption variables
+        let ws;
+        let ecdhKeyPair;
+        let aesKey;
+        let myUserId;
+        let myUsername = null;
+        let typingTimeout;
+        let lastTypingTime = 0;
 
-        // Hash with SHA-256 to get AES key (matching server)
-        const hashedKey = await crypto.subtle.digest(
-          "SHA-256",
-          sharedSecret
-        );
+        // DOM Elements
+        const statusText = document.getElementById('statusText');
+        const connectionDot = document.querySelector('.connection-dot');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const myUsernameSpan = document.getElementById('myUsername');
+        const messagesContainer = document.getElementById('messagesContainer');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const usersContainer = document.getElementById('usersContainer');
+        const userCount = document.getElementById('userCount');
+        const typingIndicator = document.getElementById('typingIndicator');
+        const usernameModal = document.getElementById('usernameModal');
+        const usernameInput = document.getElementById('usernameInput');
+        const welcomeMessage = document.getElementById('welcomeMessage');
 
-        // Import as AES key
-        aesKey = await crypto.subtle.importKey(
-          "raw",
-          hashedKey,
-          { name: "AES-GCM", length: 256 },
-          false,
-          ["encrypt", "decrypt"]
-        );
+        // Initialize WebSocket connection
+        function initWebSocket() {
+            updateStatus('Connecting to server...', false);
+            
+            ws = new WebSocket('ws://localhost:8080');
+            
+            ws.onopen = () => {
+                updateStatus('Performing key exchange...', false);
+                console.log('WebSocket connected');
+            };
+            
+            ws.onmessage = handleMessage;
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                updateStatus('Connection error', false);
+            };
+            
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                updateStatus('Disconnected', false);
+                setTimeout(initWebSocket, 3000); // Reconnect after 3 seconds
+            };
+        }
 
-        console.log("Shared AES key established (client)");
-        log.textContent += "Secure connection established!\n";
-      }
-    };
+        // Update connection status UI
+        function updateStatus(text, isConnected) {
+            statusText.textContent = text;
+            connectionStatus.textContent = text;
+            connectionDot.className = 'connection-dot' + (isConnected ? ' connected' : '');
+            
+            if (isConnected) {
+                myStatus.className = 'status-indicator connected';
+            }
+        }
 
-    // Encrypt and send message
-    async function send() {
-      if (!aesKey) {
-        alert("AES key not ready");
-        return;
-      }
+        // Handle incoming messages
+        async function handleMessage(event) {
+            try {
+                const data = JSON.parse(event.data);
+                
+                switch(data.type) {
+                    case 'server-public-key':
+                        handleServerPublicKey(data.key);
+                        break;
+                        
+                    case 'user-list':
+                        updateUserList(data.users);
+                        break;
+                        
+                    case 'user-joined':
+                        addUser(data.user);
+                        addSystemMessage(`${data.user.username} joined the chat`);
+                        break;
+                        
+                    case 'user-left':
+                        removeUser(data.userId);
+                        addSystemMessage(`${data.username} left the chat`);
+                        break;
+                        
+                    case 'chat-message':
+                        displayMessage(data.sender, data.message, data.timestamp);
+                        break;
+                        
+                    case 'user-typing':
+                        showTypingIndicator(data.userId, data.username, data.isTyping);
+                        break;
+                }
+            } catch (error) {
+                console.error('Error handling message:', error);
+            }
+        }
 
-      const text = document.getElementById("msg").value;
-      if (!text.trim()) return;
+        // Handle server public key and perform ECDH key exchange
+        async function handleServerPublicKey(serverKeyBase64) {
+            try {
+                // Generate client ECDH key pair
+                ecdhKeyPair = await crypto.subtle.generateKey(
+                    { name: 'ECDH', namedCurve: 'P-256' },
+                    true,
+                    ['deriveBits']
+                );
+                
+                // Import server public key
+                const serverPub = await crypto.subtle.importKey(
+                    'raw',
+                    base64Decode(serverKeyBase64),
+                    { name: 'ECDH', namedCurve: 'P-256' },
+                    false,
+                    []
+                );
+                
+                // Send client public key to server
+                const clientPubRaw = await crypto.subtle.exportKey(
+                    'raw',
+                    ecdhKeyPair.publicKey
+                );
+                
+                ws.send(JSON.stringify({
+                    type: 'client-public-key',
+                    key: base64Encode(clientPubRaw)
+                }));
+                
+                // Derive shared secret
+                const sharedSecret = await crypto.subtle.deriveBits(
+                    { name: 'ECDH', public: serverPub },
+                    ecdhKeyPair.privateKey,
+                    256
+                );
+                
+                // Hash shared secret to get AES key
+                const hashedKey = await crypto.subtle.digest(
+                    'SHA-256',
+                    sharedSecret
+                );
+                
+                // Import as AES key
+                aesKey = await crypto.subtle.importKey(
+                    'raw',
+                    hashedKey,
+                    { name: 'AES-GCM', length: 256 },
+                    false,
+                    ['encrypt']
+                );
+                
+                updateStatus('Connected - Secure', true);
+                connectionStatus.textContent = 'Secure connection established';
+                
+                // Show username modal
+                setTimeout(() => {
+                    usernameModal.style.display = 'flex';
+                    usernameInput.focus();
+                }, 500);
+                
+            } catch (error) {
+                console.error('Key exchange error:', error);
+                updateStatus('Key exchange failed', false);
+            }
+        }
 
-      const encoded = new TextEncoder().encode(text);
-      const iv = crypto.getRandomValues(new Uint8Array(12));
+        // Set username
+        function setUsername() {
+            const username = usernameInput.value.trim();
+            if (!username) {
+                alert('Please enter a username');
+                return;
+            }
+            
+            myUsername = username;
+            myUsernameSpan.textContent = username;
+            usernameModal.style.display = 'none';
+            
+            // Send username to server
+            ws.send(JSON.stringify({
+                type: 'set-username',
+                username: username
+            }));
+            
+            welcomeMessage.style.display = 'none';
+            addSystemMessage(`You joined as ${username}`);
+        }
 
-      try {
-        const encrypted = await crypto.subtle.encrypt(
-          { name: "AES-GCM", iv: iv },
-          aesKey,
-          encoded
-        );
+        // Send encrypted message
+        async function sendMessage() {
+            const text = messageInput.value.trim();
+            if (!text || !aesKey || !myUsername) {
+                return;
+            }
+            
+            try {
+                // Encrypt the message
+                const encoded = new TextEncoder().encode(text);
+                const iv = crypto.getRandomValues(new Uint8Array(12));
+                
+                const encrypted = await crypto.subtle.encrypt(
+                    { name: 'AES-GCM', iv: iv },
+                    aesKey,
+                    encoded
+                );
+                
+                // Send to server
+                ws.send(JSON.stringify({
+                    type: 'chat',
+                    iv: base64Encode(iv),
+                    data: base64Encode(encrypted)
+                }));
+                
+                // Display message locally
+                displayMessage(
+                    { username: myUsername, color: '#667eea' },
+                    text,
+                    new Date().toISOString(),
+                    true
+                );
+                
+                // Clear input
+                messageInput.value = '';
+                messageInput.focus();
+                
+            } catch (error) {
+                console.error('Encryption error:', error);
+                alert('Failed to encrypt message');
+            }
+        }
 
-        // Send the complete encrypted data (ciphertext + tag)
-        ws.send(JSON.stringify({
-          type: "chat",
-          iv: base64Encode(iv),
-          data: base64Encode(encrypted) // Includes tag at the end
-        }));
+        // Display message in chat
+        function displayMessage(sender, message, timestamp, isOwn = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isOwn ? 'own-message' : 'other-message'}`;
+            
+            const time = new Date(timestamp).toLocaleTimeString([], { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+            
+            messageDiv.innerHTML = `
+                <div class="message-content">
+                    <div class="message-sender">
+                        ${!isOwn ? `<span style="color: ${sender.color}">${sender.username}</span>` : 'You'}
+                    </div>
+                    <div class="message-bubble">${escapeHtml(message)}</div>
+                    <div class="message-time">${time}</div>
+                </div>
+            `;
+            
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
 
-        log.textContent += "You: " + text + "\n";
-        document.getElementById("msg").value = "";
-      } catch (err) {
-        console.error("Encryption failed:", err);
-        alert("Encryption failed: " + err.message);
-      }
-    }
+        // Add system message
+        function addSystemMessage(text) {
+            const systemDiv = document.createElement('div');
+            systemDiv.className = 'system-message';
+            systemDiv.textContent = text;
+            messagesContainer.appendChild(systemDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
 
-    // Allow sending with Enter key
-    document.getElementById("msg").addEventListener("keypress", (e) => {
-      if (e.key === "Enter") send();
-    });
-  </script>
+        // Update user list
+        function updateUserList(users) {
+            usersContainer.innerHTML = '';
+            userCount.textContent = users.length;
+            
+            users.forEach(user => {
+                addUser(user);
+            });
+        }
+
+        // Add user to list
+        function addUser(user) {
+            const userDiv = document.createElement('div');
+            userDiv.className = 'user-item';
+            userDiv.id = `user-${user.id}`;
+            userDiv.innerHTML = `
+                <div class="user-avatar" style="background: ${user.color};">
+                    ${user.username.charAt(0).toUpperCase()}
+                </div>
+                <div class="user-name">${user.username}</div>
+                <div class="user-status">Online</div>
+            `;
+            usersContainer.appendChild(userDiv);
+        }
+
+        // Remove user from list
+        function removeUser(userId) {
+            const userElement = document.getElementById(`user-${userId}`);
+            if (userElement) {
+                userElement.remove();
+                userCount.textContent = parseInt(userCount.textContent) - 1;
+            }
+        }
+
+        // Show typing indicator
+        function showTypingIndicator(userId, username, isTyping) {
+            clearTimeout(typingTimeout);
+            
+            if (isTyping) {
+                typingIndicator.textContent = `${username} is typing...`;
+                typingIndicator.style.opacity = '1';
+                
+                typingTimeout = setTimeout(() => {
+                    typingIndicator.style.opacity = '0';
+                }, 3000);
+            } else {
+                typingIndicator.style.opacity = '0';
+            }
+        }
+
+        // Handle typing events
+        function handleTyping() {
+            const now = Date.now();
+            if (now - lastTypingTime > 1000) { // Throttle to once per second
+                lastTypingTime = now;
+                ws.send(JSON.stringify({
+                    type: 'typing',
+                    isTyping: true
+                }));
+                
+                // Clear typing indicator after 3 seconds
+                setTimeout(() => {
+                    ws.send(JSON.stringify({
+                        type: 'typing',
+                        isTyping: false
+                    }));
+                }, 3000);
+            }
+        }
+
+        // Utility function to escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Event Listeners
+        messageInput.addEventListener('input', handleTyping);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        usernameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                setUsername();
+            }
+        });
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            initWebSocket();
+            messageInput.focus();
+        });
+
+        // Auto-focus input when modal is closed
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                if (mutation.attributeName === 'style' && usernameModal.style.display === 'none') {
+                    messageInput.focus();
+                }
+            });
+        });
+        observer.observe(usernameModal, { attributes: true });
+    </script>
 </body>
 </html>
