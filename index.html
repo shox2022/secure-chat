@@ -7,96 +7,120 @@
   <pre id="log"></pre>
 
   <script>
+    function base64Encode(buf) {
+      return btoa(String.fromCharCode(...new Uint8Array(buf)));
+    }
+
+    function base64Decode(b64) {
+      return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    }
+
     const ws = new WebSocket("ws://localhost:8080");
     const log = document.getElementById("log");
 
     let ecdhKeyPair;
     let aesKey;
 
+    // Generate client ECDH key pair
     (async () => {
-      // 1️⃣ Generate client ECDH key pair
       ecdhKeyPair = await crypto.subtle.generateKey(
         { name: "ECDH", namedCurve: "P-256" },
         true,
-        ["deriveKey"]
+        ["deriveBits"]
       );
       console.log("Client ECDH keys generated");
     })();
 
-    ws.onmessage = async e => {
-      const data = JSON.parse(e.data);
+    // Handle messages from server
+    ws.onmessage = async (event) => {
+      const data = JSON.parse(event.data);
 
-      // 2️⃣ Receive server public key
       if (data.type === "server-public-key") {
-        console.log("Received server public key");
-
         const serverPub = await crypto.subtle.importKey(
           "raw",
-          Uint8Array.from(atob(data.key), c => c.charCodeAt(0)),
+          base64Decode(data.key),
           { name: "ECDH", namedCurve: "P-256" },
           false,
           []
         );
 
-        // 3️⃣ Send client public key
-        const clientPubRaw = await crypto.subtle.exportKey("raw", ecdhKeyPair.publicKey);
+        // Send client public key
+        const clientPubRaw = await crypto.subtle.exportKey(
+          "raw",
+          ecdhKeyPair.publicKey
+        );
+
         ws.send(JSON.stringify({
           type: "client-public-key",
-          key: btoa(String.fromCharCode(...new Uint8Array(clientPubRaw)))
+          key: base64Encode(clientPubRaw)
         }));
 
-        // 4️⃣ Derive AES key from shared secret
-        aesKey = await crypto.subtle.deriveKey(
+        // Derive shared secret (matching server's method)
+        const sharedSecret = await crypto.subtle.deriveBits(
           { name: "ECDH", public: serverPub },
           ecdhKeyPair.privateKey,
+          256
+        );
+
+        // Hash with SHA-256 to get AES key (matching server)
+        const hashedKey = await crypto.subtle.digest(
+          "SHA-256",
+          sharedSecret
+        );
+
+        // Import as AES key
+        aesKey = await crypto.subtle.importKey(
+          "raw",
+          hashedKey,
           { name: "AES-GCM", length: 256 },
           false,
           ["encrypt", "decrypt"]
         );
 
         console.log("Shared AES key established (client)");
-      }
-
-      // 5️⃣ Receive decrypted/echoed messages from server
-      if (data.type === "chat") {
-        log.textContent += "Server says: " + data.text + "\n";
+        log.textContent += "Secure connection established!\n";
       }
     };
 
-    // 6️⃣ Send AES-encrypted chat message
+    // Encrypt and send message
     async function send() {
       if (!aesKey) {
-        alert("AES key not ready yet");
+        alert("AES key not ready");
         return;
       }
 
-      const plaintext = document.getElementById("msg").value;
-      const encoder = new TextEncoder();
-      const encoded = encoder.encode(plaintext);
+      const text = document.getElementById("msg").value;
+      if (!text.trim()) return;
 
+      const encoded = new TextEncoder().encode(text);
       const iv = crypto.getRandomValues(new Uint8Array(12));
 
-      const ciphertext = await crypto.subtle.encrypt(
-        { name: "AES-GCM", iv },
-        aesKey,
-        encoded
-      );
+      try {
+        const encrypted = await crypto.subtle.encrypt(
+          { name: "AES-GCM", iv: iv },
+          aesKey,
+          encoded
+        );
 
-      // AES-GCM automatically appends 16-byte auth tag at the end
-      const tagLength = 16;
-      const ciphertextBytes = new Uint8Array(ciphertext);
-      const tag = ciphertextBytes.slice(ciphertextBytes.length - tagLength);
-      const ct = ciphertextBytes.slice(0, ciphertextBytes.length - tagLength);
+        // Send the complete encrypted data (ciphertext + tag)
+        ws.send(JSON.stringify({
+          type: "chat",
+          iv: base64Encode(iv),
+          data: base64Encode(encrypted) // Includes tag at the end
+        }));
 
-      ws.send(JSON.stringify({
-        type: "chat",
-        iv: btoa(String.fromCharCode(...iv)),
-        data: btoa(String.fromCharCode(...ct)),
-        tag: btoa(String.fromCharCode(...tag))
-      }));
-
-      document.getElementById("msg").value = "";
+        log.textContent += "You: " + text + "\n";
+        document.getElementById("msg").value = "";
+      } catch (err) {
+        console.error("Encryption failed:", err);
+        alert("Encryption failed: " + err.message);
+      }
     }
+
+    // Allow sending with Enter key
+    document.getElementById("msg").addEventListener("keypress", (e) => {
+      if (e.key === "Enter") send();
+    });
   </script>
 </body>
 </html>
